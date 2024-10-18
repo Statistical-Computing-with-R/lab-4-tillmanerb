@@ -1,9 +1,19 @@
 ---
 title: "Lab 4: Childcare Costs in California"
-author: "Your name here!"
-format: html
+author: "Tillman Erb"
+format: 
+  html:  
+    embed-resources: true
+    code-tools: true
+    toc: true
 editor: source
-embed-resources: true
+code-fold: true
+self-contained: true
+theme: darkly
+execute:
+  echo: true
+  error: true
+  warning: false
 ---
 
 ## The Data
@@ -18,6 +28,8 @@ The data come to us from [TidyTuesday](https://github.com/rfordatascience/tidytu
 ```{r}
 #| label: setup
 
+library(tidyverse)
+library(here)
 ```
 
 ```{r}
@@ -29,6 +41,7 @@ counties <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytues
 ```
 
 **1. Briefly describe the dataset (~ 4 sentences). What information does it contain?**
+The dataset contains information on childcare costs year over year for counties in the United States. The childcare_costs dataframe has 34567 rows and 61 columns, and the rows have unique values represented by county and year. childcare_costs (2008 - 2018) contains data from the national database of childcare prices on a variety of metrics such as unemployment rates, poverty rates, and childcare costs. The county is represented by the count_fips_code, allowing the information to be joined to the counties dataframe for additional information about each county, and has 3144 rows and 4 columns.
 
 ## California Childcare Costs
 
@@ -40,6 +53,11 @@ Let's start by focusing only on California.
 ```{r}
 #| label: ca-childcare-costs
 
+ca_childcare <- counties |>
+  filter(state_abbreviation == 'CA') |>
+  inner_join(childcare_costs)
+
+ca_childcare
 ```
 
 **3. Using a function from the `forcats` package, complete the code below to create a new variable where each county is categorized into one of the [10 Census regions](https://census.ca.gov/regions/) in California. Use the Region description (from the plot), not the Region number.**  
@@ -48,9 +66,23 @@ Let's start by focusing only on California.
 ```{r}
 #| label: recoding-county-to-census-regions
 
+#Used Gemini Advanced here to assist with collapsing the categories. See https://gemini.google.com/app/97fc26f14e181a41 for the conversation
 ca_childcare <- ca_childcare |> 
-  mutate(county_name = str_remove(county_name, " County")) |>
-  ...
+  mutate(county_name = str_remove(county_name, " County"),
+        region = fct_collapse(county_name,
+        "Superior California" = c("Butte", "Colusa", "Glenn", "Lassen", "Modoc", "Nevada", "Plumas", "Shasta", "Sierra", "Siskiyou", "Sutter", "Tehama", "Trinity", "Yuba"),
+        "North Coast" = c("Del Norte", "Humboldt", "Lake", "Mendocino"),
+        "San Francisco Bay Area" = c("Alameda", "Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
+        "Northern San Joaquin Valley" = c("Alpine", "Amador", "Calaveras", "El Dorado", "Madera", "Mariposa", "Merced", "Mono", "Sacramento", "San Joaquin", "Stanislaus", "Tuolumne"),
+        "Central Coast" = c("Monterey", "San Benito", "San Luis Obispo", "Santa Barbara", "Santa Cruz"),
+        "Southern San Joaquin Valley" = c("Fresno", "Kern", "Kings", "Tulare"),
+        "Inland Empire" = c("Riverside", "San Bernardino"),
+        "Los Angeles County" = "Los Angeles",
+        "Orange County" = "Orange",
+        "San Diego County" = "San Diego"
+        ), .before = state_abbreviation)
+
+ca_childcare
 ```
 
 
@@ -59,6 +91,13 @@ ca_childcare <- ca_childcare |>
 ```{r}
 #| label: median-income-by-region-over-time
 
+median_inc <- ca_childcare |>
+  filter(study_year %in% c(2008, 2018)) |>
+  group_by(region, study_year) |>
+  summarize(median_household_income = median(mhi_2018)) |>
+  pivot_wider(names_from = study_year, values_from = median_household_income)
+
+median_inc
 ```
 
 
@@ -68,7 +107,14 @@ ca_childcare <- ca_childcare |>
 ```{r}
 #| label: lowest-median-weekly-price-2018
 
+ca_childcare |>
+  filter(study_year == 2018) |>
+  group_by(region) |>
+  summarize(median_weekly_cc_price = median(mc_infant)) |>
+  arrange(median_weekly_cc_price) |>
+  inner_join(select(median_inc, -`2008`))
 ```
+The lowest median full-time weekly price for infant childcare is not in the county with the lowest median household income.
 
 **6. The following plot shows, for all ten regions, the change over time of the full-time median price for center-based childcare for infants, toddlers, and preschoolers. Recreate the plot. You do not have to replicate the exact colors or theme, but your plot should have the same content, including the order of the facets and legend, reader-friendly labels, axes breaks, and a loess smoother.**
 
@@ -77,6 +123,25 @@ ca_childcare <- ca_childcare |>
 ```{r}
 #| label: recreate-plot
 
+plot_data <- ca_childcare |>
+  select(county_name, region, study_year, mc_infant, mc_toddler, mc_preschool) |>
+  pivot_longer(cols = c(mc_infant, mc_toddler, mc_preschool),
+               names_to = "cc_type",
+               values_to = "wkly_med_price"
+              ) |>
+  mutate(cc_type = fct_recode(cc_type,
+      "Infant" = "mc_infant",
+      "Toddler" = "mc_toddler",
+      "Preschool" = "mc_preschool"))
+
+ggplot(data = plot_data, mapping = aes(x = study_year, y = wkly_med_price, color = region)) +
+  geom_point() +
+  geom_smooth() +
+  facet_wrap(~ cc_type) +
+  labs(x = "Study Year",
+       y = NULL,
+       title = "Weekly ")
+  
 ```
 
 

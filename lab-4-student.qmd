@@ -70,16 +70,16 @@ ca_childcare
 ca_childcare <- ca_childcare |> 
   mutate(county_name = str_remove(county_name, " County"),
         region = fct_collapse(county_name,
-        "Superior California" = c("Butte", "Colusa", "Glenn", "Lassen", "Modoc", "Nevada", "Plumas", "Shasta", "Sierra", "Siskiyou", "Sutter", "Tehama", "Trinity", "Yuba"),
-        "North Coast" = c("Del Norte", "Humboldt", "Lake", "Mendocino"),
-        "San Francisco Bay Area" = c("Alameda", "Contra Costa", "Marin", "Napa", "San Francisco", "San Mateo", "Santa Clara", "Solano", "Sonoma"),
-        "Northern San Joaquin Valley" = c("Alpine", "Amador", "Calaveras", "El Dorado", "Madera", "Mariposa", "Merced", "Mono", "Sacramento", "San Joaquin", "Stanislaus", "Tuolumne"),
-        "Central Coast" = c("Monterey", "San Benito", "San Luis Obispo", "Santa Barbara", "Santa Cruz"),
-        "Southern San Joaquin Valley" = c("Fresno", "Kern", "Kings", "Tulare"),
+        "Superior California" = c("Butte", "El Dorado", "Colusa", "Glenn", "Lassen", "Modoc", "Nevada", "Placer", "Plumas", "Sacramento", "Shasta", "Sierra", "Siskiyou", "Sutter", "Tehama", "Yolo", "Yuba"),
+        "North Coast" = c("Del Norte", "Humboldt", "Lake", "Mendocino", "Napa", "Sonoma", "Trinity"),
+        "San Francisco Bay Area" = c("Alameda", "Contra Costa", "Marin", "San Francisco", "San Mateo", "Santa Clara", "Solano"),
+        "Northern San Joaquin Valley" = c("Alpine", "Amador", "Calaveras", "Madera", "Mariposa", "Merced", "Mono", "San Joaquin", "Stanislaus", "Tuolumne"),
+        "Central Coast" = c("Monterey", "San Benito", "San Luis Obispo", "Santa Barbara", "Santa Cruz", "Ventura"),
+        "Southern San Joaquin Valley" = c("Fresno", "Inyo", "Kern", "Kings", "Tulare"),
         "Inland Empire" = c("Riverside", "San Bernardino"),
         "Los Angeles County" = "Los Angeles",
         "Orange County" = "Orange",
-        "San Diego County" = "San Diego"
+        "San Diego County" = c("Imperial", "San Diego")
         ), .before = state_abbreviation)
 
 ca_childcare
@@ -107,12 +107,15 @@ median_inc
 ```{r}
 #| label: lowest-median-weekly-price-2018
 
-ca_childcare |>
+income_cc <- ca_childcare |>
   filter(study_year == 2018) |>
   group_by(region) |>
   summarize(median_weekly_cc_price = median(mc_infant)) |>
   arrange(median_weekly_cc_price) |>
-  inner_join(select(median_inc, -`2008`))
+  inner_join(select(median_inc, -`2008`)) |>
+  rename(median_household_income =`2018`)
+
+income_cc
 ```
 The lowest median full-time weekly price for infant childcare is not in the county with the lowest median household income.
 
@@ -134,13 +137,28 @@ plot_data <- ca_childcare |>
       "Toddler" = "mc_toddler",
       "Preschool" = "mc_preschool"))
 
-ggplot(data = plot_data, mapping = aes(x = study_year, y = wkly_med_price, color = region)) +
+ggplot(data = plot_data, mapping = aes(x = study_year, 
+                                       y = wkly_med_price, 
+                                       color = fct_reorder2(.f = region,
+                                                            .x = study_year,
+                                                            .y = wkly_med_price)
+                                       )
+       ) +
   geom_point() +
-  geom_smooth() +
-  facet_wrap(~ cc_type) +
+  geom_smooth(method = 'loess') +
+  facet_grid(~ factor(cc_type, levels = c("Infant", "Toddler", "Preschool"))) +
   labs(x = "Study Year",
        y = NULL,
-       title = "Weekly ")
+       title = "Weekly Median Price for Center-Based Childcare ($)",
+       color = "California Region") + 
+  scale_y_continuous(limits = c(0,500)) + #http://www.sthda.com/english/wiki/ggplot2-axis-ticks-a-guide-to-customize-tick-marks-and-labels
+  scale_x_continuous(breaks = seq.int(2008, 2018, by = 2)) + #https://www.geeksforgeeks.org/get-a-list-of-numbers-in-the-specified-range-in-r-programming-seq-int-function/
+  theme(aspect.ratio = 1.4,
+        axis.text.x = element_text(size=6),
+        axis.text.y = element_text(size=8),#https://stackoverflow.com/questions/14942681/change-size-of-axes-title-and-labels-in-ggplot2
+        panel.spacing.x = unit(1, "lines")) + #https://ggplot2.tidyverse.org/reference/theme.html
+  scale_colour_viridis_d()
+
   
 ```
 
@@ -152,16 +170,30 @@ ggplot(data = plot_data, mapping = aes(x = study_year, y = wkly_med_price, color
 ```{r}
 #| label: scatterplot-median-income-vs-childcare-cost
 
+options(scipen = 999) #https://forum.posit.co/t/how-to-turn-off-scientific-notation-like-1e-09-in-r/71575
+ggplot(data = income_cc, mapping = aes(y = median_weekly_cc_price,
+                                       x = median_household_income)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Median Household Income ($) versus Median Weekly Infant
+                Center-Based Childcare Price ($)",
+       x = "2018 CA Regional Median Household Income ($)",
+       y = NULL,
+       subtitle = "2018 CA Regional Median Childcare Price ($)")
 ```
 
 **8. Look up the documentation for `lm()` and fit a linear regression model to the relationship shown in your plot above.**
 
 ```{r}
 # complete the code provided
-reg_mod1 <- lm()
+reg_mod1 <- lm(income_cc$median_weekly_cc_price ~ income_cc$median_household_income)
 summary(reg_mod1)
 ```
 
 **9. Using the output from `summary()`, write out the estimated regression line (recall: $y = mx + b$).**
 
+The estimated regression line is:  **$y = 0.00296x + 96.4$**
+
 **10. Do you have evidence to conclude there is a relationship between the median household income and the median weekly cost of center-based childcare for infants in California? Cite values from your `summary()` output to support your claim!**
+
+Yes, there is significant evidence to support that there is a significant relationship between median household income and the median weekly cost of center-based childcare for infants in California. With p values of 0.0005 for the slope and 0.0282 for the intercept (both of which are less than alpha = 0.05), we reject the null hypothesis (which states that there is no relationship between median household income and median weekly cost of childcare) and conclude that there is a relationship between median household income and median weekly cost of childcare.
